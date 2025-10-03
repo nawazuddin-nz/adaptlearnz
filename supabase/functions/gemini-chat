@@ -1,0 +1,53 @@
+// functions/gemini-chat/index.ts
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+
+serve(async (req: Request) => {
+  try {
+    const { message, context } = await req.json();
+
+    // Call Gemini API
+    const geminiRes = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=" + Deno.env.get("GEMINI_API_KEY"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{
+          role: "user",
+          parts: [{ text: `You are a helpful assistant. The user message is: "${message}". 
+Context so far: ${JSON.stringify(context)}. 
+
+Your task:
+1. Extract "topic" if the user mentioned what they want to learn (else leave null).
+2. Extract "duration" if the user mentioned a time frame (else leave null).
+3. Write a friendly natural reply to continue the chat.
+
+Return only JSON strictly in this format:
+{
+  "topic": string | null,
+  "duration": string | null,
+  "reply": string
+}` }]
+        }]
+      }),
+    });
+
+    const geminiData = await geminiRes.json();
+
+    // Parse Gemini's JSON
+    let parsed;
+    try {
+      parsed = JSON.parse(geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "{}");
+    } catch {
+      parsed = { topic: null, duration: null, reply: "Sorry, I didn’t understand. Can you rephrase?" };
+    }
+
+    return new Response(JSON.stringify(parsed), {
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    console.error(err);
+    return new Response(
+      JSON.stringify({ error: "Failed to process request" }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
+});
